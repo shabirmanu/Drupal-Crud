@@ -1,0 +1,357 @@
+<?php
+/**
+* Implements hook_menu().
+*/
+function locationdata_menu() {
+
+	$items['location/add'] = array(
+		'title' => 'Add Location',
+		'description' => 'View My Custom Table.',
+		'page callback' => 'locationdata_block_view',
+		'access arguments' => array('access locationdata'),
+		'weight' => -14,
+	);
+
+	$items['location/%/edit'] = array(
+		'title' => 'Edit Location',
+		'page callback' => 'locationdata_edit_block_view',
+		'page argument' => array(3),
+		 'access arguments' => array('access locationdata'),
+		'weight' => -14,
+	);
+	$items['location'] = array(
+		'title' => 'Locations',
+		'description' => 'View Locations user belongs',
+		'page callback' => 'locationdata_sort_with_pager_content',
+		 'access arguments' => array('access user locations'),
+		'weight' => -14,
+	);
+
+	return $items;
+
+}
+
+
+function locationdata_sort_with_pager_content() {
+	global $user;
+	$user_obj = user_load($user->uid);
+	$location_ids[] = '';
+	foreach ($user_obj->field_custom_location['und'] as $key => $value) {
+		$location_ids[] = $value['value'];
+	}
+
+	$header = array(
+		array('data' => t('Title'), 'field' => 'location_name', 'sort' => 'asc'),
+		array('data' => t('Category'), 'field' => 'category', 'sort' => 'asc'),
+		array('data' => t('Bond Goal'), 'field' => 'bond_goal', 'sort' => 'asc'),
+		array('data' => t('Deposit Goal'), 'field' => 'deposit_goal', 'sort' => 'asc'),
+		array('data' => t('Action')),
+		
+		
+	);
+
+	$query = db_select('location', 'loc');
+	$query->leftjoin('taxonomy_term_data','ttd','loc.category = ttd.tid');
+
+	$query->fields('loc', array('id', 'name','bond_goal', 'deposit_goal','date_created','date_updated'));
+	$query->fields('ttd', array('name'));
+
+	$query->addField('loc', 'name', 'location_name');
+	$query->addField('ttd', 'name', 'category_name');
+	$query->condition('loc.id', $location_ids, 'IN');
+	
+	$table_sort = $query->extend('TableSort') // Add table sort extender.
+	->orderByHeader($header); // Add order by headers.
+	$pager = $table_sort->extend('PagerDefault')
+	->limit(10);
+	$result = $pager->execute();
+
+	$rows = array();
+		foreach($result as $res){
+			
+			$rows[] = array($res->location_name, $res->category_name,$res->bond_goal, $res->deposit_goal, 
+				"<a href='/location/$res->id/edit'>Edit</a>");
+	}
+
+       // If rows are not empty theme and display the rows.
+	$output = '<a href="/location/add">Add Location</a>';
+
+	if (!empty($rows)) {
+		$output .= theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('id' => 'sort-table')));
+		$output .= theme('pager');
+	}
+	else {
+	     $output .= t("No results found.");
+	}
+	
+	return $output;
+}
+
+function locationdata_form_alter(&$form, &$form_state, $form_id) {
+	if($form_id == 'field_ui_field_settings_form'){
+		$field = field_info_field('field_custom_location');
+		$field['settings']['allowed_values_function'] = 'custom_location_callback';
+		field_update_field($field);
+
+		$field = field_info_field('field_lead_location');
+		$field['settings']['allowed_values_function'] = 'custom_location_callback';
+		field_update_field($field);
+    }
+
+}
+
+function custom_location_callback() {
+	$loc_res = db_query('SELECT name, id from {location} order by name');
+	foreach ($loc_res as $key => $location) {
+		$locations[$location->id] = $location->name;
+	}
+	return $locations;
+}
+
+function locationdata_views_api() {
+   return array(
+       'api' => '3.0-alpha1',
+       'path' => drupal_get_path('module','locationdata'). '/views',
+   );
+}
+/**
+* Implements hook_block_view().
+*/
+function locationdata_block_view($block_name = '')
+{
+
+
+	$form = drupal_get_form('locationdata_form');
+	$block = array
+	(
+	  'content' => $form,
+	);
+    return $block;
+}
+
+
+
+function locationdata_form($form, &$form_state)
+{
+	$categories = getCategories();
+    $users = getUsers();
+
+	$form['location_name'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Name'),
+		'#size' => 40,
+		'#maxlength' => 120,
+		'#required' => TRUE,
+	);
+	
+	
+	$form['location_category'] = array(
+	    '#type' => 'select', //you can find a list of available types in the form api
+	    '#title' => 'Category',
+	    '#options' => $categories,
+    );
+
+	
+	
+	$form['location_bond_goal'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Bond Goal'),
+		'#size' => 40,
+		'#maxlength' => 120,
+		'#required' => TRUE,
+	);
+
+	$form['location_deposit_goal'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Deposit Goal'),
+		'#size' => 40,
+		'#maxlength' => 120,
+		'#required' => TRUE,
+	);
+    
+    
+
+  	// now I add also a button
+	$form['submit'] = array
+	(
+		'#type' => 'submit',
+		'#value' => t('Save'),
+	);
+	// and now I assign a my function as handler of the submit event
+	// $form['#validate'][] = 'locationdata_submit_handler';
+	$form['#validate'][] = 'locationdata_validation_handler';
+	$form['#submit'][] = 'locationdata_submit_handler';
+	return $form;
+}
+
+function locationdata_validation_handler($form, &$form_state) {
+	if(!isset($form_state['values']['location_name'])) {
+		form_set_error('location_name',t('Location is required'));
+	}
+
+	if(!isset($form_state['values']['location_bond_goal'])) {
+		form_set_error('location_bond_goal',t('Bond Goal is required'));
+	}
+	if(!isset($form_state['values']['location_deposit_goal'])) {
+		form_set_error('location_deposit_goal',t('Deposit Goal is required'));
+	}
+
+}
+function locationdata_submit_handler($form, &$form_state)
+{
+
+	$name = $form_state['values']['location_name'];
+	$bond_goal = $form_state['values']['location_bond_goal'];
+	$deposit_goal = $form_state['values']['location_deposit_goal'];
+	$category = $form_state['values']['location_category'];
+	
+	$location_id = db_insert('location') // Table name no longer needs {}
+	->fields(array(
+	'name' => $name,
+	'bond_goal' => $bond_goal,
+	'deposit_goal' => $deposit_goal,
+	'category' => $category,
+	'date_created' => date('Y-m-d H:i:s'),
+	'date_updated' => date('Y-m-d H:i:s'),
+	))
+	->execute();
+	drupal_set_message(t('Record has been added!'));
+}
+
+
+/**
+* Implements hook_block_view().
+*/
+function locationdata_edit_block_view($block_name = '')
+{
+
+
+
+	$form = drupal_get_form('locationdata_edit_form');
+	$block = array
+	(
+	// 'subject' => t('Subject'),
+	'content' => $form,
+	);
+	// $block['content'][] .= '<br /><a href=”add”>Back to Listing</a>';
+	return $block;
+}
+
+
+
+function locationdata_edit_form($form, &$form_state)
+{
+
+	$categories = getCategories();
+	$id = arg(1);
+	$result = db_query('SELECT * FROM {location} WHERE id = :tid', array(':tid' => $id));
+	$record = $result->fetchObject();
+
+	
+	$form['location_name'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Name'),
+		'#size' => 40,
+		'#default_value' => $record->name,
+		'#maxlength' => 120,
+		'#required' => TRUE,
+	);
+	
+	
+
+	$form['location_category'] = array(
+	    '#type' => 'select', //you can find a list of available types in the form api
+	    '#title' => 'Category',
+	    '#options' => $categories,
+	    '#default_value' => $record->category,
+    );
+
+	
+	
+	$form['location_bond_goal'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Bond Goal'),
+		'#default_value' => $record->bond_goal,
+		'#size' => 40,
+		'#maxlength' => 120,
+		'#required' => TRUE,
+	);
+
+	$form['location_deposit_goal'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Deposit Goal'),
+		'#default_value' => $record->deposit_goal,
+		'#size' => 40,
+		'#maxlength' => 120,
+		'#required' => TRUE,
+	);
+    
+	// now I add also a button
+	$form['id'] = array(
+	'#type' => 'hidden',
+	'#value' => t($id),
+	);
+	$form['submit'] = array
+	(
+		'#type' => 'submit',
+		'#value' => t('Save'),
+	);
+	
+	$form['#validate'][] = 'locationdata_validation_handler';
+	$form['#submit'][] = 'locationdata_edit_submit_handler';
+	return $form;
+}
+
+
+
+function locationdata_edit_submit_handler($form, &$form_state)
+{
+
+	$id = $form_state['values']['id'];
+	//var_dump($form_state);
+	$name = $form_state['values']['location_name'];
+	$bond_goal = $form_state['values']['location_bond_goal'];
+	$deposit_goal = $form_state['values']['location_deposit_goal'];
+	$category = $form_state['values']['location_category'];
+	
+	$data =array(
+	'name' => $name,
+	'bond_goal' => $bond_goal,
+	'deposit_goal' => $deposit_goal,
+	'category' => $category,
+	'date_updated' => date('Y-m-d H:i:s'),
+	);
+	
+	$num_updated = db_update('location')
+	->fields($data)
+	->condition('id', $id, '=')
+	->execute();
+	drupal_set_message(t('Record has been Updated!'));
+}
+
+/**
+* Implements hook_permission().
+*/
+function locationdata_permission() {
+return array(
+	'access locationdata' => array(
+	'title' => t('View Location Data'),
+	// Note: We translate the ‘Administer blocks’ permission string here with
+	// a separate t() call, to make sure it gets the same translation as when
+	// it’s in block_permission().
+		'description' => t('Customizing the Twilio data requires the !permission-name permission.', array(
+		'!permission-name' => l(t('Administer blocks'), 'admin/people/permissions', array('fragment' => 'module-block')),
+		)),
+	),
+	);
+}
+
+function getCategories() {
+	$category_result = db_query('Select tid, name from {taxonomy_term_data} where vid = :vid', array(':vid' => 2));
+	$categories[] = '';
+	foreach ($category_result as $key => $category) {
+		$categories[$category->tid] = $category->name;
+		# code...
+	}
+	return $categories;
+}

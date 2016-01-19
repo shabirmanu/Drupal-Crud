@@ -1,0 +1,7 @@
+name = Location Management
+description = Managing Data for Location in Custom table.
+core = 7.x
+dependencies[] = views
+files[] = locationdata.install
+files[] = locationdata.module
+files[] = views/locationdata.views.inc

@@ -1,0 +1,63 @@
+<?php
+
+function locationdata_schema(){
+  $schema['location']=array(
+    'description' => 'Location Custom DB table',
+      'fields' => array(
+        'id' => array(
+           'type' => 'serial',
+           'description' => 'Location Custom DB table Id field'
+         ),
+          'name' => array(
+             'type' => 'varchar',
+             'length' => '255',
+         ),
+        
+         'bond_goal' => array(
+             'type' => 'float',
+             'size' => 'normal',
+         ),
+         'deposit_goal' => array(
+             'type' => 'float',
+             'size' => 'normal',
+         ),
+         'category' => array(
+             'type' => 'int',
+             'length' => '11',
+         ),
+         
+        'date_created' => array(
+           'type' => 'datetime',
+            'mysql_type' => 'DATETIME',
+            'pgsql_type' => 'timestamp without time zone', 
+            'sqlite_type' => 'VARCHAR', 
+            'sqlsrv_type' => 'smalldatetime',
+            'not null' => FALSE, 
+            'sortable' => TRUE, 
+            'views' => TRUE,
+         ),
+         'date_updated' => array(
+           'type' => 'datetime',
+            'mysql_type' => 'DATETIME',
+            'pgsql_type' => 'timestamp without time zone', 
+            'sqlite_type' => 'VARCHAR', 
+            'sqlsrv_type' => 'smalldatetime',
+            'not null' => FALSE, 
+            'sortable' => TRUE, 
+            'views' => TRUE,
+         ),
+        ),
+        'primary key' => array('id'),
+
+    );
+
+    return $schema;
+}
+
+function locationdata_install() {
+    drupal_install_schema('location');
+}
+
+function locationdata_uninstall() {
+    drupal_uninstall_schema('location');
+}
